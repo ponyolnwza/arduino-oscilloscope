@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Arduino Oscilloscope</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+    
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      padding: 20px;
+    }
+    
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+      background: #2196F3;
+      color: white;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      font-size: 24px;
+      font-weight: normal;
+    }
+    
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    
+    .status-led {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      opacity: 0.3;
+    }
+    
+    .status-led.connected { background: #4CAF50; opacity: 1; }
+    .status-led.running { background: #FF9800; opacity: 1; animation: blink 1s infinite; }
+    
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    
+    .main-layout {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 20px;
+    }
+    
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .panel {
+      background: #fafafa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+    }
+    
+    .panel h3 {
+      font-size: 14px;
+      color: #555;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #2196F3;
+    }
+    
+    .control-group {
+      margin-bottom: 12px;
+    }
+    
+    .control-group label {
+      display: block;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 5px;
+    }
+    
+    .control-group input,
+    .control-group select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+    }
+    
+    .control-group input:focus,
+    .control-group select:focus {
+      outline: none;
+      border-color: #2196F3;
+    }
+    
+    input[type="range"] {
+      width: 100%;
+      height: 6px;
+      border-radius: 3px;
+      background: #ddd;
+      outline: none;
+    }
+    
+    input[type="checkbox"] {
+      width: auto;
+      margin-right: 8px;
+    }
+    
+    button {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 8px;
+      background: #2196F3;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    button:hover:not(:disabled) {
+      background: #1976D2;
+    }
+    
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    button.secondary {
+      background: #757575;
+    }
+    
+    button.secondary:hover:not(:disabled) {
+      background: #616161;
+    }
+    
+    button.success {
+      background: #4CAF50;
+    }
+    
+    button.success:hover:not(:disabled) {
+      background: #388E3C;
+    }
+    
+    button.warning {
+      background: #FF9800;
+    }
+    
+    button.warning:hover:not(:disabled) {
+      background: #F57C00;
+    }
+    
+    .content-area {
+      display: flex;
+      flex-direction: column;
+      gap: 15px;
+    }
+    
+    .measurements {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      padding: 15px;
+      background: #fafafa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+    
+    .measure-card {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 12px;
+      text-align: center;
+    }
+    
+    .measure-label {
+      font-size: 11px;
+      color: #888;
+      margin-bottom: 5px;
+      text-transform: uppercase;
+    }
+    
+    .measure-value {
+      font-size: 22px;
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 2px;
+    }
+    
+    .measure-unit {
+      font-size: 12px;
+      color: #999;
+    }
+    
+    .chart-container {
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 20px;
+      position: relative;
+    }
+    
+    .chart-info {
+      position: absolute;
+      top: 30px;
+      left: 30px;
+      background: rgba(255,255,255,0.95);
+      border: 1px solid #ddd;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      color: #666;
+      z-index: 10;
+    }
+    
+    .chart-info div {
+      margin-bottom: 4px;
+    }
+    
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 500px !important;
+    }
+    
+    .console {
+      background: #fafafa;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      padding: 15px;
+      height: 120px;
+      overflow-y: auto;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      color: #333;
+    }
+    
+    .console-line {
+      margin-bottom: 4px;
+      padding: 2px 0;
+    }
+    
+    .console-line.error { color: #f44336; }
+    .console-line.success { color: #4CAF50; }
+    .console-line.info { color: #2196F3; }
+    .console-line.warning { color: #FF9800; }
+    
+    .alert {
+      background: #fff3cd;
+      border: 1px solid #ffc107;
+      color: #856404;
+      padding: 12px 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+      font-size: 13px;
+    }
+    
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+    
+    @media (max-width: 1024px) {
+      .main-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <h1>⚡ Arduino Oscilloscope</h1>
+        <div style="font-size: 12px; margin-top: 5px; color: rgba(255,255,255,0.8);">
+          Benchamarachrugsarit School
+        </div>
+      </div>
+      <div class="status-indicator">
+        <span id="statusText">ไม่ได้เชื่อมต่อ</span>
+        <div class="status-led" id="statusLed"></div>
+      </div>
+    </div>
+    
+    <div class="alert" id="browserAlert" style="display: none;">
+      <strong>⚠️ เบราว์เซอร์นี้ไม่รองรับ Web Serial API</strong><br>
+      กรุณาใช้ Google Chrome, Microsoft Edge หรือ Opera เวอร์ชันล่าสุด
+    </div>
+    
+    <div class="main-layout">
+      <!-- Sidebar Controls -->
+      <div class="sidebar">
+        <div class="panel">
+          <h3>🔌 การเชื่อมต่อ</h3>
+          <button id="connectBtn">เชื่อมต่อ Arduino</button>
+          <button id="disconnectBtn" class="secondary" disabled>ตัดการเชื่อมต่อ</button>
+          <button id="calibrateBtn" class="secondary" disabled>ปรับเทียบ (Calibrate)</button>
+        </div>
+        
+        <div class="panel">
+          <h3>▶️ การควบคุม</h3>
+          <button id="runBtn" class="success" disabled>▶ เริ่มวัด (RUN)</button>
+          <button id="stopBtn" class="warning" disabled>⏸ หยุด (STOP)</button>
+          <button id="resetBtn" class="secondary" disabled>🔄 รีเซ็ตเวลา</button>
+        </div>
+        
+        <div class="panel">
+          <h3>⏱️ แกนเวลา (Time Base)</h3>
+          <div class="control-group">
+            <label>Time/Division</label>
+            <select id="timeDiv">
+              <option value="0.001">1ms/div</option>
+              <option value="0.002">2ms/div</option>
+              <option value="0.005">5ms/div</option>
+              <option value="0.01">10ms/div</option>
+              <option value="0.02">20ms/div</option>
+              <option value="0.05">50ms/div</option>
+              <option value="0.1">100ms/div</option>
+              <option value="0.2">200ms/div</option>
+              <option value="0.5" selected>500ms/div</option>
+              <option value="1">1s/div</option>
+              <option value="2">2s/div</option>
+              <option value="5">5s/div</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="panel">
+          <h3>📊 แกนแรงดัน (Vertical)</h3>
+          <div class="control-group">
+            <label>Volts/Division</label>
+            <select id="voltDiv">
+              <option value="0.1">0.1V/div</option>
+              <option value="0.2">0.2V/div</option>
+              <option value="0.5">0.5V/div</option>
+              <option value="1" selected>1V/div</option>
+              <option value="2">2V/div</option>
+              <option value="5">5V/div</option>
+              <option value="10">10V/div</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>ตำแหน่งแนวตั้ง</label>
+            <input type="range" id="vPosition" min="-5" max="5" value="0" step="0.1">
+            <span id="vPosValue" style="font-size: 12px; color: #666;">0.0 V</span>
+          </div>
+        </div>
+        
+        <div class="panel">
+          <h3>🎯 Trigger</h3>
+          <div class="control-group">
+            <label>โหมด</label>
+            <select id="triggerMode">
+              <option value="auto" selected>Auto</option>
+              <option value="normal">Normal</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>ขอบสัญญาณ</label>
+            <select id="triggerEdge">
+              <option value="rising" selected>Rising ↗</option>
+              <option value="falling">Falling ↘</option>
+            </select>
+          </div>
+          <div class="control-group">
+            <label>ระดับแรงดัน (V)</label>
+            <input type="number" id="triggerLevel" value="2.5" step="0.1">
+          </div>
+        </div>
+        
+        <div class="panel">
+          <h3>📈 การแสดงผล</h3>
+          <div class="control-group">
+            <label>
+              <input type="checkbox" id="gridCheck" checked>
+              แสดงเส้นตาราง
+            </label>
+          </div>
+          <div class="control-group">
+            <label>
+              <input type="checkbox" id="measureCheck" checked>
+              แสดงค่าวัด
+            </label>
+          </div>
+        </div>
+        
+        <div class="panel">
+          <h3>💾 ส่งออกข้อมูล</h3>
+          <button id="exportBtn" class="secondary">บันทึก CSV</button>
+          <button id="screenshotBtn" class="secondary">บันทึกภาพ</button>
+        </div>
+      </div>
+      
+      <!-- Main Display Area -->
+      <div class="content-area">
+        <!-- Measurements -->
+        <div class="measurements" id="measurements">
+          <div class="measure-card">
+            <div class="measure-label">Frequency</div>
+            <div class="measure-value" id="freqVal">0.00</div>
+            <div class="measure-unit">Hz</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Period</div>
+            <div class="measure-value" id="periodVal">0.00</div>
+            <div class="measure-unit">ms</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Vpp</div>
+            <div class="measure-value" id="vppVal">0.000</div>
+            <div class="measure-unit">V</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Vrms</div>
+            <div class="measure-value" id="vrmsVal">0.000</div>
+            <div class="measure-unit">V</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Vmax</div>
+            <div class="measure-value" id="vmaxVal">0.000</div>
+            <div class="measure-unit">V</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Vmin</div>
+            <div class="measure-value" id="vminVal">0.000</div>
+            <div class="measure-unit">V</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Vmean</div>
+            <div class="measure-value" id="vmeanVal">0.000</div>
+            <div class="measure-unit">V</div>
+          </div>
+          <div class="measure-card">
+            <div class="measure-label">Samples</div>
+            <div class="measure-value" id="samplesVal">0</div>
+            <div class="measure-unit">points</div>
+          </div>
+        </div>
+        
+        <!-- Oscilloscope Display -->
+        <div class="chart-container">
+          <div class="chart-info">
+            <div><strong>Time:</strong> <span id="timebaseDisplay">500ms/div</span></div>
+            <div><strong>Volt:</strong> <span id="voltDisplay">1V/div</span></div>
+            <div><strong>Rate:</strong> <span id="sampleRate">0</span> samples/s</div>
+            <div><strong>Trigger:</strong> <span id="triggerStatus">Auto</span></div>
+          </div>
+          <canvas id="oscilloscope"></canvas>
+        </div>
+        
+        <!-- Console -->
+        <div class="console" id="console"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Check browser support
+    if (!('serial' in navigator)) {
+      document.getElementById('browserAlert').style.display = 'block';
+    }
+    
+    let port, reader, writer, chart;
+    let isStreaming = false;
+    let dataBuffer = '';
+    let timeData = [], voltageData = [], adcData = [];
+    
+    // Console logging
+    function log(message, type = 'info') {
+      const console = document.getElementById('console');
+      const line = document.createElement('div');
+      line.className = `console-line ${type}`;
+      const time = new Date().toLocaleTimeString('th-TH');
+      line.textContent = `[${time}] ${message}`;
+      console.appendChild(line);
+      console.scrollTop = console.scrollHeight;
+      
+      // Keep only last 50 lines
+      while (console.children.length > 50) {
+        console.removeChild(console.firstChild);
+      }
+    }
+    
+    // Initialize Chart
+    const ctx = document.getElementById('oscilloscope').getContext('2d');
+    chart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'CH1',
+          data: [],
+          borderColor: '#2196F3',
+          backgroundColor: 'rgba(33, 150, 243, 0.1)',
+          borderWidth: 2,
+          pointRadius: 0,
+          tension: 0,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        scales: {
+          x: {
+            type: 'linear',
+            position: 'bottom',
+            title: {
+              display: true,
+              text: 'เวลา (วินาที)',
+              color: '#666',
+              font: { size: 13 }
+            },
+            ticks: {
+              color: '#666',
+              callback: v => v.toFixed(3)
+            },
+            grid: {
+              color: '#e0e0e0',
+              lineWidth: 1
+            }
+          },
+          y: {
+            position: 'left',
+            title: {
+              display: true,
+              text: 'แรงดัน (V)',
+              color: '#666',
+              font: { size: 13 }
+            },
+            ticks: {
+              color: '#666',
+              callback: v => v.toFixed(2)
+            },
+            grid: {
+              color: '#e0e0e0',
+              lineWidth: 1
+            }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            enabled: true,
+            backgroundColor: 'rgba(0,0,0,0.8)',
+            callbacks: {
+              title: ctx => `Time = ${ctx[0].parsed.x.toFixed(6)} s`,
+              label: ctx => `Voltage = ${ctx.parsed.y.toFixed(4)} V`
+            }
+          }
+        }
+      }
+    });
+    
+    // Connect
+    document.getElementById('connectBtn').addEventListener('click', async () => {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+        
+        const decoder = new TextDecoderStream();
+        port.readable.pipeTo(decoder.writable);
+        reader = decoder.readable.getReader();
+        
+        const encoder = new TextEncoderStream();
+        encoder.readable.pipeTo(port.writable);
+        writer = encoder.writable.getWriter();
+        
+        document.getElementById('connectBtn').disabled = true;
+        document.getElementById('disconnectBtn').disabled = false;
+        document.getElementById('calibrateBtn').disabled = false;
+        document.getElementById('runBtn').disabled = false;
+        document.getElementById('resetBtn').disabled = false;
+        document.getElementById('statusLed').classList.add('connected');
+        document.getElementById('statusText').textContent = 'เชื่อมต่อแล้ว';
+        
+        log('เชื่อมต่อสำเร็จ', 'success');
+      } catch (error) {
+        log(`การเชื่อมต่อล้มเหลว: ${error.message}`, 'error');
+      }
+    });
+    
+    // Disconnect
+    document.getElementById('disconnectBtn').addEventListener('click', async () => {
+      if (isStreaming) await stopAcquisition();
+      
+      try {
+        if (reader) await reader.cancel();
+        if (writer) await writer.close();
+        if (port) await port.close();
+        
+        document.getElementById('connectBtn').disabled = false;
+        document.getElementById('disconnectBtn').disabled = true;
+        document.getElementById('calibrateBtn').disabled = true;
+        document.getElementById('runBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('resetBtn').disabled = true;
+        document.getElementById('statusLed').classList.remove('connected', 'running');
+        document.getElementById('statusText').textContent = 'ไม่ได้เชื่อมต่อ';
+        
+        log('ตัดการเชื่อมต่อแล้ว', 'info');
+      } catch (error) {
+        log(`ข้อผิดพลาด: ${error.message}`, 'error');
+      }
+    });
+    
+    // Calibrate
+    document.getElementById('calibrateBtn').addEventListener('click', async () => {
+      if (!writer) return;
+      log('กำลังปรับเทียบ... กรุณาถอดสายทุกเส้นออกจากขา A0', 'warning');
+      await writer.write('C');
+    });
+    
+    // Run
+    document.getElementById('runBtn').addEventListener('click', async () => {
+      if (!writer) return;
+      await writer.write('S');
+      isStreaming = true;
+      document.getElementById('runBtn').disabled = true;
+      document.getElementById('stopBtn').disabled = false;
+      document.getElementById('statusLed').classList.add('running');
+      document.getElementById('statusText').textContent = 'กำลังวัด...';
+      log('เริ่มการวัดข้อมูล', 'success');
+      readDataStream();
+    });
+    
+    // Stop
+    document.getElementById('stopBtn').addEventListener('click', stopAcquisition);
+    
+    async function stopAcquisition() {
+      if (!writer || !isStreaming) return;
+      await writer.write('P');
+      isStreaming = false;
+      document.getElementById('runBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      document.getElementById('statusLed').classList.remove('running');
+      document.getElementById('statusText').textContent = 'เชื่อมต่อแล้ว';
+      log('หยุดการวัดข้อมูล', 'info');
+    }
+    
+    // Reset
+    document.getElementById('resetBtn').addEventListener('click', async () => {
+      if (!writer) return;
+      await writer.write('R');
+      timeData = [];
+      voltageData = [];
+      adcData = [];
+      updateChart();
+      log('รีเซ็ตเวลาแล้ว', 'info');
+    });
+    
+    // Read data stream
+    async function readDataStream() {
+      try {
+        while (isStreaming) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          
+          dataBuffer += value;
+          const lines = dataBuffer.split('\n');
+          dataBuffer = lines.pop() || '';
+          
+          for (let line of lines) {
+            line = line.trim();
+            
+            if (line.includes(',')) {
+              const parts = line.split(',');
+              if (parts.length >= 2) {
+                const time = parseFloat(parts[0]) / 1000000;
+                const voltage = parseFloat(parts[1]);
+                const adc = parts.length > 2 ? parseFloat(parts[2]) : 0;
+                
+                if (!isNaN(time) && !isNaN(voltage)) {
+                  addDataPoint(time, voltage, adc);
+                }
+              }
+            } else if (line.includes('CALIBRATION') || line.includes('INFO') || 
+                       line.includes('START') || line.includes('STOP') || line.includes('READY')) {
+              log(line, 'info');
+            }
+          }
+        }
+      } catch (error) {
+        if (error.name !== 'AbortError') {
+          log(`ข้อผิดพลาด: ${error.message}`, 'error');
+          isStreaming = false;
+        }
+      }
+    }
+    
+    // Add data point
+    function addDataPoint(time, voltage, adc) {
+      timeData.push(time);
+      voltageData.push(voltage);
+      adcData.push(adc);
+      
+      const maxPoints = 2000;
+      if (timeData.length > maxPoints) {
+        timeData.shift();
+        voltageData.shift();
+        adcData.shift();
+      }
+      
+      updateChart();
+      updateMeasurements();
+    }
+    
+    // Update chart
+    function updateChart() {
+      const timeDiv = parseFloat(document.getElementById('timeDiv').value);
+      const voltDiv = parseFloat(document.getElementById('voltDiv').value);
+      const vPos = parseFloat(document.getElementById('vPosition').value);
+      const showGrid = document.getElementById('gridCheck').checked;
+      
+      const timeWindow = timeDiv * 10;
+      let filteredTime = [], filteredVolt = [];
+      
+      if (timeData.length > 0) {
+        const latestTime = timeData[timeData.length - 1];
+        for (let i = 0; i < timeData.length; i++) {
+          if (latestTime - timeData[i] <= timeWindow) {
+            filteredTime.push(timeData[i]);
+            filteredVolt.push(voltageData[i] + vPos);
+          }
+        }
+      }
+      
+      chart.data.datasets[0].data = filteredTime.map((t, i) => ({
+        x: t,
+        y: filteredVolt[i]
+      }));
+      
+      const centerTime = filteredTime.length > 0 ? 
+        filteredTime[filteredTime.length - 1] - timeWindow / 2 : 0;
+      chart.options.scales.x.min = centerTime - timeWindow / 2;
+      chart.options.scales.x.max = centerTime + timeWindow / 2;
+      chart.options.scales.y.min = -voltDiv * 5 + vPos;
+      chart.options.scales.y.max = voltDiv * 5 + vPos;
+      
+      chart.options.scales.x.grid.display = showGrid;
+      chart.options.scales.y.grid.display = showGrid;
+      
+      chart.update('none');
+      
+      document.getElementById('timebaseDisplay').textContent = 
+        (timeDiv >= 1 ? timeDiv + 's' : (timeDiv * 1000) + 'ms') + '/div';
+      document.getElementById('voltDisplay').textContent = voltDiv + 'V/div';
+    }
+    
+    // Update measurements
+    function updateMeasurements() {
+      if (voltageData.length < 2) return;
+      
+      const vMax = Math.max(...voltageData);
+      const vMin = Math.min(...voltageData);
+      const vMean = voltageData.reduce((a, b) => a + b) / voltageData.length;
+      const vPP = vMax - vMin;
+      
+      const vRMS = Math.sqrt(
+        voltageData.reduce((sum, v) => sum + Math.pow(v, 2), 0) / voltageData.length
+      );
+      
+      let crossings = 0;
+      for (let i = 1; i < voltageData.length; i++) {
+        if (voltageData[i-1] < vMean && voltageData[i] >= vMean) crossings++;
+      }
+      const totalTime = timeData[timeData.length - 1] - timeData[0];
+      const frequency = totalTime > 0 ? crossings / totalTime : 0;
+      const period = frequency > 0 ? 1 / frequency : 0;
+      
+      const sampleRate = timeData.length > 1 ? 
+        (timeData.length - 1) / totalTime : 0;
+      
+      document.getElementById('freqVal').textContent = frequency.toFixed(2);
+      document.getElementById('periodVal').textContent = (period * 1000).toFixed(2);
+      document.getElementById('vppVal').textContent = vPP.toFixed(3);
+      document.getElementById('vrmsVal').textContent = vRMS.toFixed(3);
+      document.getElementById('vmaxVal').textContent = vMax.toFixed(3);
+      document.getElementById('vminVal').textContent = vMin.toFixed(3);
+      document.getElementById('vmeanVal').textContent = vMean.toFixed(3);
+      document.getElementById('samplesVal').textContent = voltageData.length;
+      document.getElementById('sampleRate').textContent = Math.round(sampleRate);
+    }
+    
+    // Export CSV
+    document.getElementById('exportBtn').addEventListener('click', () => {
+      let csv = 'Time(s),Voltage(V),ADC\n';
+      for (let i = 0; i < timeData.length; i++) {
+        csv += `${timeData[i].toFixed(6)},${voltageData[i].toFixed(4)},${adcData[i]}\n`;
+      }
+      
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `oscilloscope_${Date.now()}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+      log('ส่งออกข้อมูล CSV สำเร็จ', 'success');
+    });
+    
+    // Screenshot
+    document.getElementById('screenshotBtn').addEventListener('click', () => {
+      const canvas = document.getElementById('oscilloscope');
+      canvas.toBlob(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `screenshot_${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+        log('บันทึกภาพสำเร็จ', 'success');
+      });
+    });
+    
+    // Update vertical position display
+    document.getElementById('vPosition').addEventListener('input', (e) => {
+      document.getElementById('vPosValue').textContent = parseFloat(e.target.value).toFixed(1) + ' V';
+      updateChart();
+    });
+    
+    // Control listeners
+    document.getElementById('timeDiv').addEventListener('change', updateChart);
+    document.getElementById('voltDiv').addEventListener('change', updateChart);
+    document.getElementById('gridCheck').addEventListener('change', updateChart);
+    
+    document.getElementById('measureCheck').addEventListener('change', (e) => {
+      document.getElementById('measurements').style.display = e.target.checked ? 'grid' : 'none';
+    });
+    
+    document.getElementById('triggerMode').addEventListener('change', (e) => {
+      document.getElementById('triggerStatus').textContent = e.target.value;
+    });
+    
+    log('Oscilloscope พร้อมใช้งาน', 'success');
+    log('กดปุ่ม "เชื่อมต่อ Arduino" เพื่อเริ่มต้น', 'info');
+  </script>
+</body>
+</html>
